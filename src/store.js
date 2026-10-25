@@ -7,14 +7,33 @@ export const uid = () => Math.random().toString(36).slice(2, 10);
 export const MIN_CLIP = 0.1;
 
 export function emptyProject() {
-  return { name: 'Untitled', width: 1280, height: 720, fps: 30, media: [], videoClips: [], textClips: [], audioClips: [] };
+  return {
+    name: 'Untitled', width: 1280, height: 720, fps: 30, media: [], videoClips: [], textClips: [], audioClips: [],
+    effects: [], captionClips: [], captionStyle: { style: 'karaoke' }, grade: false, loudnorm: false, fades: false,
+  };
 }
 
+// Older project files miss the newer tracks.
+export function normalizeProject(p) {
+  return { ...emptyProject(), ...p, effects: p.effects || [], captionClips: p.captionClips || [], captionStyle: p.captionStyle || { style: 'karaoke' } };
+}
+
+// Overlap between clip a and the next clip b when a has a transition (kept identical to electron/ffmpeg.cjs).
+export function transitionDuration(a, b) {
+  if (!a || !b || !a.transition || !a.transition.type || a.transition.type === 'none') return 0;
+  const T = a.transition.duration ?? 0.3;
+  const room = Math.min(a.out - a.in, b.out - b.in) / 2 - 0.05;
+  const d = Math.max(0, Math.min(T, room));
+  return d >= 0.05 ? d : 0;
+}
+
+// Timeline position of every main-track clip. Transitions make neighbours overlap.
 export function videoLayout(videoClips) {
   let t = 0;
-  return videoClips.map((c) => {
-    const item = { clip: c, start: t, end: t + (c.out - c.in) };
-    t = item.end;
+  return videoClips.map((c, i) => {
+    const overlap = transitionDuration(c, videoClips[i + 1]);
+    const item = { clip: c, start: t, end: t + (c.out - c.in), overlap };
+    t = item.end - overlap;
     return item;
   });
 }
@@ -24,6 +43,8 @@ export function projectDuration(p) {
   const ends = [v.length ? v[v.length - 1].end : 0];
   p.textClips.forEach((c) => ends.push(c.start + c.duration));
   p.audioClips.forEach((c) => ends.push(c.start + (c.out - c.in)));
+  (p.captionClips || []).forEach((c) => ends.push(c.start + c.duration));
+  (p.effects || []).forEach((c) => ends.push(c.start + c.duration));
   return Math.max(0, ...ends);
 }
 
@@ -37,12 +58,27 @@ export function videoClipAt(p, t) {
   return videoLayout(p.videoClips).find((l) => t >= l.start && t < l.end) || null;
 }
 
-const TRACKS = { video: 'videoClips', text: 'textClips', audio: 'audioClips' };
+const TRACKS = { video: 'videoClips', text: 'textClips', audio: 'audioClips', effect: 'effects', caption: 'captionClips' };
 
 function reduceProject(p, a) {
   switch (a.type) {
     case 'load':
-      return a.project;
+      return normalizeProject(a.project);
+    case 'replace': // e.g. Auto Edit: like load, but undoable
+      return normalizeProject(a.project);
+    case 'setProject':
+      return { ...p, ...a.patch };
+    case 'addEffect':
+      return { ...p, effects: [...(p.effects || []), { id: a.clipId, type: a.effect, start: a.at, duration: a.duration }] };
+    case 'addCaption':
+      return { ...p, captionClips: [...(p.captionClips || []), { id: a.clipId, text: 'Caption', start: a.at, duration: 2 }] };
+    case 'setCaptions':
+      return { ...p, captionClips: a.items };
+    case 'transitionAll':
+      return {
+        ...p,
+        videoClips: p.videoClips.map((c, i) => (i < p.videoClips.length - 1 ? { ...c, transition: a.transition ? { ...a.transition } : undefined } : c)),
+      };
     case 'addMedia':
       return { ...p, media: [...p.media, ...a.items] };
     case 'removeMedia':
@@ -113,6 +149,17 @@ function splitAt(p, track, id, t, newId) {
       audioClips: p.audioClips.flatMap((x) => (x.id !== id ? [x] : [{ ...x, out: cut }, { ...x, id: newId, start: t, in: cut }])),
     };
   }
+  if (track === 'caption' || track === 'effect') {
+    const key = TRACKS[track];
+    const c = p[key].find((x) => x.id === id);
+    if (!c || t - c.start < MIN_CLIP || c.start + c.duration - t < MIN_CLIP) return p;
+    return {
+      ...p,
+      [key]: p[key].flatMap((x) =>
+        x.id !== id ? [x] : [{ ...x, duration: t - x.start }, { ...x, id: newId, start: t, duration: x.start + x.duration - t }]
+      ),
+    };
+  }
   if (track === 'text') {
     const c = p.textClips.find((x) => x.id === id);
     if (!c || t - c.start < MIN_CLIP || c.start + c.duration - t < MIN_CLIP) return p;
@@ -146,6 +193,7 @@ export function historyReducer(state, a) {
   const next = reduceProject(state.present, a);
   if (next === state.present) return state;
   if (a.type === 'load') return { past: [], present: next, future: [] };
+  if (a.type === 'replace') return { past: [...state.past, state.present].slice(-100), present: next, future: [] };
   if (a.transient || state.gestureStart) return { ...state, present: next };
   return { past: [...state.past, state.present].slice(-100), present: next, future: [] };
 }

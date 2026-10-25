@@ -47,6 +47,7 @@
 - [Why CapRocket?](#why-caprocket)
 - [Download and install](#download-and-install)
 - [Tour of the app](#tour-of-the-app)
+- [⚡ Auto Edit (RocketPilot)](#-auto-edit-rocketpilot)
 - [Features](#features)
 - [How it is built](#how-it-is-built)
 - [Run from source](#run-from-source)
@@ -152,6 +153,33 @@ Every tile is a live preview: hover it to see the effect or the transition play 
     <td align="center" width="50%"><img src="docs/media/settings.png" width="380" alt="Settings with encrypted keys" /><br /><sub><b>Settings</b>: optional keys, stored encrypted</sub></td>
   </tr>
 </table>
+
+## ⚡ Auto Edit (RocketPilot)
+
+One click turns a raw gameplay or screen recording into a finished, **still fully editable** edit.
+Everything runs on your PC with the bundled FFmpeg: no Python, no account, no upload.
+
+| Step | What Auto Edit does |
+|---|---|
+| ✂️ Cut | Removes dead air (quiet **and** nothing moving: loading screens, menus) or plain silences; filler words from a list (e.g. exported from Descript) |
+| 🎯 Highlights | Finds the best moments from loudness + on-screen action + what you say ("no way", "let's go", shouting, fast talking) |
+| 🔀 Transitions | On every cut, picked from 20 (zoom in, pixelate, radial, blur, circle, flash, squeeze, wind…) — change any of them in the Inspector |
+| 💥 Effects | Highlight hits on a new **Effects** track: glitch, flash, invert, camera shake, motion trails, colour boost |
+| 🔊 Sound effects | Whoosh on transitions, riser + bass boom (+ glitch) on highlights — generated in code, free to use anywhere |
+| 💬 Captions | From any `.srt` (YouTube, Descript, CapCut): retimed to the cuts, "um/uh" removed, punchy 3-word chunks with a **word-by-word highlight** on a new **Captions** track |
+| 🏷️ Hook title | Optional bouncing title over the first 3 seconds |
+| 🎚️ Finish | Colour boost, YouTube loudness (-14 LUFS), fade in/out |
+
+Then, from the top bar:
+
+- **🎬 Shorts** — one 1080×1920 Short per highlight: gameplay over a blurred background, bouncing hook, word-highlight captions, zoom punch and hits on the peak, and a slow-motion **REPLAY** ending.
+- **✨ YouTube pack** — 3 titles, a description with **chapters**, tags, Short hooks and a thumbnail (best frame, boosted colours, big outlined text). Written by **Claude** if you add your own Anthropic API key in ⚙ Settings, otherwise from templates.
+- **Save captions as .srt** (Inspector, nothing selected) — the retimed captions to upload to YouTube.
+
+Three styles: **Crazy** (default), **Hype** and **Clean**. Every Auto Edit is one undo step (Ctrl+Z).
+
+Code: `electron/rocket/` (analysis, captions, effects, SFX, Auto Edit, Shorts, Claude) and `src/components/Rocket.jsx`.
+Test without Electron: `npm run test:rocket`.
 
 ## Features
 
@@ -382,6 +410,7 @@ Desktop and Start menu shortcuts. It is not code-signed, so SmartScreen may ask 
 ### Tests
 ```bash
 npm run test:export
+npm run test:rocket   # Auto Edit end to end: cut, export, Short, thumbnail, YouTube pack
 ```
 Other suites: `test:captions`, `test:magnet`, `test:toolbar`, `test:clipmenu`, `test:layers`, `test:fx`,
 `test:library`, `test:stock`, `test:favorites`, `test:tts`, `test:ai`, `test:agent`.

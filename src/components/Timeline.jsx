@@ -1,9 +1,10 @@
 import React, { useRef, useState } from 'react';
 import { MIN_CLIP, formatTime, videoLayout } from '../store.js';
+import { EFFECTS, TRANSITIONS } from '../rocket.js';
 
 const HEADER = 84;
 
-export default function Timeline({ project, time, duration, selection, onSelect, onSeek, dispatch, onSplit, onDelete, onAddText }) {
+export default function Timeline({ project, time, duration, selection, onSelect, onSeek, dispatch, onSplit, onDelete, onAddText, onAddEffect, onAddCaption }) {
   const [pps, setPps] = useState(60); // pixels per second (zoom)
   const scrollRef = useRef(null);
   const mediaById = Object.fromEntries(project.media.map((m) => [m.id, m]));
@@ -67,7 +68,7 @@ export default function Timeline({ project, time, duration, selection, onSelect,
     const o = { ...clip };
     drag(e, (d) => {
       let patch;
-      if (track === 'text') {
+      if (track === 'text' || track === 'caption' || track === 'effect') {
         if (mode === 'left') {
           const start = clamp(o.start + d, 0, o.start + o.duration - MIN_CLIP);
           patch = { start, duration: o.start + o.duration - start };
@@ -97,6 +98,8 @@ export default function Timeline({ project, time, duration, selection, onSelect,
         <button onClick={onSplit} title="Ctrl+B / S">✂ Split</button>
         <button onClick={onDelete} disabled={!selection} title="Delete">🗑 Delete</button>
         <button onClick={onAddText}>T+ Texte</button>
+        <button onClick={onAddCaption}>💬+ Caption</button>
+        <button onClick={() => onAddEffect('glitch')}>✨+ Effect</button>
         <div className="spacer" />
         <span className="dim">Zoom</span>
         <input type="range" min="10" max="300" value={pps} onChange={(e) => setPps(Number(e.target.value))} />
@@ -108,6 +111,26 @@ export default function Timeline({ project, time, duration, selection, onSelect,
             <div className="tl-lane">
               {ticks.map((t) => (
                 <div key={t} className="tick" style={{ left: t * pps }}>{formatTime(t).slice(0, 5)}</div>
+              ))}
+            </div>
+          </div>
+
+          <div className="tl-row slim">
+            <div className="tl-head">Effects</div>
+            <div className="tl-lane" onPointerDown={scrub}>
+              {(project.effects || []).map((c) => (
+                <Clip pps={pps} selection={selection} key={c.id} track="effect" clip={c} start={c.start} length={c.duration}
+                  label={EFFECTS[c.type]?.label ?? c.type} onDown={(e, mode) => startFreeDrag(e, 'effect', c, mode)} />
+              ))}
+            </div>
+          </div>
+
+          <div className="tl-row slim">
+            <div className="tl-head">Captions</div>
+            <div className="tl-lane" onPointerDown={scrub}>
+              {(project.captionClips || []).map((c) => (
+                <Clip pps={pps} selection={selection} key={c.id} track="caption" clip={c} start={c.start} length={c.duration}
+                  label={c.text} onDown={(e, mode) => startFreeDrag(e, 'caption', c, mode)} />
               ))}
             </div>
           </div>
@@ -129,11 +152,23 @@ export default function Timeline({ project, time, duration, selection, onSelect,
                 <Clip pps={pps} selection={selection} key={l.clip.id} track="video" clip={l.clip} start={l.start} length={l.end - l.start}
                   label={mediaById[l.clip.mediaId]?.name ?? '?'} onDown={(e, mode) => startVideoDrag(e, l.clip, mode)} />
               ))}
+              {layout.slice(0, -1).map((l) => {
+                const on = l.overlap > 0;
+                const sel = selection?.track === 'transition' && selection.id === l.clip.id;
+                return (
+                  <div key={'tr' + l.clip.id} className={`transition-badge ${on ? 'on' : ''} ${sel ? 'selected' : ''}`}
+                    style={{ left: (l.end - l.overlap / 2) * pps }}
+                    title={on ? `Transition: ${TRANSITIONS[l.clip.transition.type] ?? l.clip.transition.type}` : 'Add a transition'}
+                    onPointerDown={(e) => { e.stopPropagation(); onSelect({ track: 'transition', id: l.clip.id }); }}>
+                    {on ? '⧓' : '+'}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
           <div className="tl-row">
-            <div className="tl-head">Musique</div>
+            <div className="tl-head">Music · SFX</div>
             <div className="tl-lane" onPointerDown={scrub}>
               {project.audioClips.map((c) => (
                 <Clip pps={pps} selection={selection} key={c.id} track="audio" clip={c} start={c.start} length={c.out - c.in}

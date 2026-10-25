@@ -82,17 +82,32 @@ export default function Preview({ project, time, seekVer, playing, duration, onT
   }, [project.width]);
 
   const texts = project.textClips.filter((c) => time >= c.start && time < c.start + c.duration);
+  const capStyle = project.captionStyle?.style || 'karaoke';
+  const caption = capStyle === 'off' ? null : (project.captionClips || []).find((c) => time >= c.start && time < c.start + c.duration);
+  const fx = (project.effects || []).filter((e) => time >= e.start && time < e.start + e.duration);
+  const flash = fx.find((e) => e.type === 'flash');
+  const glitch = fx.some((e) => e.type === 'glitch');
+  const invert = fx.some((e) => e.type === 'invert');
+  const shake = fx.find((e) => e.type === 'shake');
+  const shakeT = shake ? (time - shake.start) : 0;
+  const stageFx = {
+    filter: [glitch && 'saturate(2.2) contrast(1.3) hue-rotate(25deg)', invert && 'invert(1)', project.grade && 'contrast(1.06) saturate(1.22)'].filter(Boolean).join(' ') || undefined,
+    transform: shake ? `translate(${(14 * Math.sin(shakeT * 95) * (1 - shakeT / shake.duration)) * scale}px, ${(14 * Math.sin(shakeT * 71 + 1.3) * (1 - shakeT / shake.duration)) * scale}px) scale(1.04)` : undefined,
+  };
 
   return (
     <section className="panel preview">
       <div className="stage-wrap">
         <div className="stage" ref={stageRef} style={{ aspectRatio: `${project.width} / ${project.height}`, width: `min(100cqw, calc(100cqh * ${project.width / project.height}))` }}>
-          <video ref={videoRef} preload="auto" playsInline />
+          <video ref={videoRef} preload="auto" playsInline style={stageFx} className={glitch ? 'glitching' : ''} />
+          {flash && <div className="fx-flash" style={{ opacity: Math.min(0.95, 0.6 * (flash.intensity ?? 1)) * (time - flash.start < flash.duration * 0.36 ? 1 : 0.5) }} />}
           {project.audioClips.map((c) => (
             <audio key={c.id} ref={(el) => { if (el) audioEls.current[c.id] = el; else delete audioEls.current[c.id]; }} preload="auto" />
           ))}
+          {caption && <CaptionView key={caption.id} caption={caption} time={time} style={capStyle} scale={scale} height={project.height}
+            size={project.captionStyle?.size ?? 1} vertical={project.height > project.width} />}
           {texts.map((t) => (
-            <div key={t.id} className="overlay-text" style={{
+            <div key={t.id} className={`overlay-text ${t.anim === 'pop' ? 'pop' : ''}`} style={{
               left: `${t.x * 100}%`, top: `${t.y * 100}%`, color: t.color,
               fontSize: `${t.size * scale}px`, textShadow: outline(Math.max(1, 2 * scale)),
             }}>{t.text}</div>
@@ -106,6 +121,21 @@ export default function Preview({ project, time, seekVer, playing, duration, onT
         <span className="tc dim">{formatTime(duration)}</span>
       </div>
     </section>
+  );
+}
+
+// Caption preview approximating the exported ASS styles (word highlight / pop / clean).
+function CaptionView({ caption, time, style, scale, height, size, vertical }) {
+  const words = caption.text.split(/\s+/).filter(Boolean);
+  const k = Math.min(words.length - 1, Math.floor(((time - caption.start) / caption.duration) * words.length));
+  const px = (vertical ? height * 0.052 : height * 0.06) * size * scale;
+  const bottom = (vertical ? 0.22 : 0.07) * 100;
+  return (
+    <div className={`caption-preview ${style}`} style={{ fontSize: `${px}px`, bottom: `${bottom}%`, textShadow: outline(Math.max(1.5, (px / 12))) }}>
+      {words.map((w, i) => (
+        <span key={i} className={style === 'karaoke' && i === k ? 'hl' : ''}>{style === 'clean' ? w : w.toUpperCase()}{' '}</span>
+      ))}
+    </div>
   );
 }
 
