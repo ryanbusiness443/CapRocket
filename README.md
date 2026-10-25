@@ -411,9 +411,12 @@ Desktop and Start menu shortcuts. It is not code-signed, so SmartScreen may ask 
 ```bash
 npm run test:export
 npm run test:rocket   # Auto Edit end to end: cut, export, Short, thumbnail, YouTube pack
+npm run test:store    # project store: undo/redo, transitions, Effects and Captions tracks
 ```
 Other suites: `test:captions`, `test:magnet`, `test:toolbar`, `test:clipmenu`, `test:layers`, `test:fx`,
 `test:library`, `test:stock`, `test:favorites`, `test:tts`, `test:ai`, `test:agent`.
+
+The whole Auto Edit flow in the real app (dialogs answered automatically): `FVE_SMOKE=<folder with video.mp4 [captions.srt]> FVE_SMOKE_MODE=rocket npx electron .`
 
 UI tests drive the real app with `FVE_SMOKE=<folder> FVE_SMOKE_MODE=<mode> npx electron .` (see `electron/smoke.cjs`)
 and never touch your real settings. The screenshots and animations in this README come from the `readme` mode

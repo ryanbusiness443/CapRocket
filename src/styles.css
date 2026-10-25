@@ -41,7 +41,7 @@ textarea { resize: vertical; user-select: text; }
 input[type='range'] { accent-color: var(--accent); width: 100%; }
 .dim { color: var(--dim); }
 
-.app { display: grid; grid-template-rows: 46px 1fr 300px; grid-template-columns: minmax(0, 1fr); height: 100%; }
+.app { display: grid; grid-template-rows: 46px 1fr 340px; grid-template-columns: minmax(0, 1fr); height: 100%; }
 
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
@@ -147,7 +147,7 @@ button.ghost { background: transparent; border-color: transparent; }
 .clip.caption { background: #9a7a12; }
 .transition-badge {
   position: absolute; top: 50%; transform: translate(-50%, -50%); width: 20px; height: 20px; border-radius: 50%;
-  display: grid; place-items: center; font-size: 11px; line-height: 1; z-index: 3; cursor: pointer;
+  display: grid; place-items: center; font-size: 11px; line-height: 1; z-index: 2; cursor: pointer;
   background: var(--panel); border: 1px solid var(--border); color: var(--dim);
 }
 .transition-badge.on { background: #8b5cf6; border-color: #c4b5fd; color: #fff; }

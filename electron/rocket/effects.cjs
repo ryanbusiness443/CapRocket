@@ -34,37 +34,49 @@ const n3 = (v) => Number(v).toFixed(3);
 const between = (a, b) => `between(t,${n3(a)},${n3(b)})`;
 
 // Turns Effects-track items into a comma-joined filter chain for a W x H stream ('' when none).
+// Items of the same type (and intensity) share ONE filter whose `enable` covers all their time ranges:
+// filters like lagfun keep working on every frame even when disabled, so one instance per highlight
+// would multiply the cost of the whole export.
 function effectChain(effects, W, H) {
-  const parts = [];
+  const groups = new Map();
   const shakes = [];
   for (const e of effects || []) {
-    const s = e.start;
     const d = e.duration ?? EFFECTS[e.type]?.duration ?? 0.3;
-    const k = e.intensity ?? 1;
-    switch (e.type) {
+    const k = Math.round((e.intensity ?? 1) * 20) / 20;
+    if (e.type === 'shake') {
+      shakes.push({ s: e.start, d, amp: (W < H ? 18 : 14) * k });
+      continue;
+    }
+    if (!EFFECTS[e.type]) continue;
+    const key = `${e.type}:${k}`;
+    if (!groups.has(key)) groups.set(key, { type: e.type, k, ranges: [] });
+    groups.get(key).ranges.push([e.start, e.start + d]);
+  }
+  const anyOf = (ranges, f0 = 0, f1 = 1) => ranges.map(([a, b]) => between(a + (b - a) * f0, a + (b - a) * f1)).join('+');
+  const parts = [];
+  for (const { type, k, ranges } of groups.values()) {
+    switch (type) {
       case 'glitch': {
-        const g = between(s, s + d);
         const sh = Math.round(22 * k);
-        parts.push(`rgbashift=rh=-${sh}:bh=${sh}:gv=${Math.round(6 * k)}:enable='${g}'`, `noise=alls=${Math.round(38 * k)}:allf=t:enable='${g}'`);
+        // chromashift works on YUV directly (rgbashift would convert every frame to RGB and back).
+        parts.push(`chromashift=cbh=-${sh}:crh=${sh}:cbv=${Math.round(6 * k)}:edge=smear:enable='${anyOf(ranges)}'`,
+          `noise=alls=${Math.round(38 * k)}:allf=t:enable='${anyOf(ranges)}'`);
         break;
       }
       case 'flash': {
         const a = Math.min(0.95, 0.6 * k);
-        parts.push(`drawbox=x=0:y=0:w=iw:h=ih:color=white@${a.toFixed(2)}:t=fill:enable='${between(s, s + d * 0.36)}'`,
-          `drawbox=x=0:y=0:w=iw:h=ih:color=white@${(a / 2).toFixed(2)}:t=fill:enable='${between(s + d * 0.36, s + d)}'`);
+        parts.push(`drawbox=x=0:y=0:w=iw:h=ih:color=white@${a.toFixed(2)}:t=fill:enable='${anyOf(ranges, 0, 0.36)}'`,
+          `drawbox=x=0:y=0:w=iw:h=ih:color=white@${(a / 2).toFixed(2)}:t=fill:enable='${anyOf(ranges, 0.36, 1)}'`);
         break;
       }
       case 'invert':
-        parts.push(`negate=enable='${between(s, s + d)}'`);
+        parts.push(`negate=enable='${anyOf(ranges)}'`);
         break;
       case 'boost':
-        parts.push(`hue=s=${(1 + 0.7 * k).toFixed(2)}:enable='${between(s, s + d)}'`);
+        parts.push(`hue=s=${(1 + 0.7 * k).toFixed(2)}:enable='${anyOf(ranges)}'`);
         break;
       case 'trails':
-        parts.push(`lagfun=decay=0.9:enable='${between(s, s + d)}'`);
-        break;
-      case 'shake':
-        shakes.push({ s, d, amp: (W < H ? 18 : 14) * k });
+        parts.push(`lagfun=decay=${Math.min(0.97, 0.86 + 0.04 * k).toFixed(2)}:enable='${anyOf(ranges)}'`);
         break;
       default:
         break;

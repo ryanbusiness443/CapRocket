@@ -11,6 +11,8 @@ import { EFFECTS } from './rocket.js';
 export default function App() {
   const [state, dispatch] = useReducer(historyReducer, { past: [], present: emptyProject(), future: [] });
   const project = state.present;
+  const projectRef = useRef(project);
+  projectRef.current = project;
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [selection, setSelection] = useState(null); // { track, id }
@@ -124,6 +126,7 @@ export default function App() {
       dispatch,
       open: setRocket,
       setPack,
+      project: () => projectRef.current,
     };
   }, [seek]);
 

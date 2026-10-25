@@ -106,10 +106,15 @@ function reduceProject(p, a) {
       };
     case 'update': {
       const key = TRACKS[a.track];
+      if (!key) return p;
       return { ...p, [key]: p[key].map((c) => (c.id === a.id ? { ...c, ...a.patch } : c)) };
     }
     case 'delete': {
+      if (a.track === 'transition') {
+        return { ...p, videoClips: p.videoClips.map((c) => (c.id === a.id ? { ...c, transition: undefined } : c)) };
+      }
       const key = TRACKS[a.track];
+      if (!key) return p;
       return { ...p, [key]: p[key].filter((c) => c.id !== a.id) };
     }
     case 'moveVideo': {

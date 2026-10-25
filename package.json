@@ -9,7 +9,8 @@
     "build": "vite build",
     "start": "vite build && electron .",
     "test:export": "node scripts/test-export.cjs",
-    "test:rocket": "node scripts/test-rocket.cjs"
+    "test:rocket": "node scripts/test-rocket.cjs",
+    "test:store": "node scripts/test-store.mjs"
   },
   "dependencies": {
     "ffmpeg-static": "^5.2.0",

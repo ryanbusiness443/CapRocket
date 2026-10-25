@@ -24,7 +24,9 @@ async function loudness(file, duration, onProgress) {
   let acc = 0;
   let cnt = 0;
   let carry = null;
-  await pipe(['-i', file, '-vn', '-ac', '1', '-ar', String(sr), '-f', 's16le', '-'], (chunk) => {
+  // aresample=async keeps the audio on its timestamps (gaps filled, overlaps dropped), so it lines up
+  // with the video even for recordings with dropped frames, VFR or joined segments.
+  await pipe(['-i', file, '-vn', '-af', `aresample=${sr}:async=1:first_pts=0`, '-ac', '1', '-f', 's16le', '-'], (chunk) => {
     let buf = carry ? Buffer.concat([carry, chunk]) : chunk;
     const usable = buf.length - (buf.length % 2);
     carry = usable < buf.length ? buf.subarray(usable) : null;

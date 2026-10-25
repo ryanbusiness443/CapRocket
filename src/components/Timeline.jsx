@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MIN_CLIP, formatTime, videoLayout } from '../store.js';
 import { EFFECTS, TRANSITIONS } from '../rocket.js';
 
@@ -92,20 +92,10 @@ export default function Timeline({ project, time, duration, selection, onSelect,
   const ticks = [];
   for (let t = 0; t * pps < width; t += step) ticks.push(t);
 
-  return (
-    <section className="timeline">
-      <div className="tl-toolbar">
-        <button onClick={onSplit} title="Ctrl+B / S">✂ Split</button>
-        <button onClick={onDelete} disabled={!selection} title="Delete">🗑 Delete</button>
-        <button onClick={onAddText}>T+ Texte</button>
-        <button onClick={onAddCaption}>💬+ Caption</button>
-        <button onClick={() => onAddEffect('glitch')}>✨+ Effect</button>
-        <div className="spacer" />
-        <span className="dim">Zoom</span>
-        <input type="range" min="10" max="300" value={pps} onChange={(e) => setPps(Number(e.target.value))} />
-      </div>
-      <div className="tl-scroll" ref={scrollRef}>
-        <div className="tl-content" style={{ width: width + HEADER }}>
+  // The rows only change with the project, zoom or selection: keep them out of the per-frame
+  // re-render during playback (only the playhead moves).
+  const tracks = useMemo(() => (
+    <>
           <div className="tl-row ruler" onPointerDown={scrub}>
             <div className="tl-head" />
             <div className="tl-lane">
@@ -176,7 +166,35 @@ export default function Timeline({ project, time, duration, selection, onSelect,
               ))}
             </div>
           </div>
+    </>
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [project, pps, selection, width]);
 
+  // Keep the playhead in view while playing or scrubbing.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const x = HEADER + time * pps;
+    const view = el.clientWidth;
+    if (x > el.scrollLeft + view - 40) el.scrollLeft = x - HEADER - 60;
+    else if (x < el.scrollLeft + HEADER) el.scrollLeft = Math.max(0, x - HEADER - 60);
+  }, [time, pps]);
+
+  return (
+    <section className="timeline">
+      <div className="tl-toolbar">
+        <button onClick={onSplit} title="Ctrl+B / S">✂ Split</button>
+        <button onClick={onDelete} disabled={!selection} title="Delete">🗑 Delete</button>
+        <button onClick={onAddText}>T+ Texte</button>
+        <button onClick={onAddCaption}>💬+ Caption</button>
+        <button onClick={() => onAddEffect('glitch')}>✨+ Effect</button>
+        <div className="spacer" />
+        <span className="dim">Zoom</span>
+        <input type="range" min="10" max="300" value={pps} onChange={(e) => setPps(Number(e.target.value))} />
+      </div>
+      <div className="tl-scroll" ref={scrollRef}>
+        <div className="tl-content" style={{ width: width + HEADER }}>
+          {tracks}
           <div className="playhead" style={{ left: HEADER + time * pps }} />
         </div>
       </div>

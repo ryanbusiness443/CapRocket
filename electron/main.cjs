@@ -30,7 +30,8 @@ function createWindow() {
   });
   win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   if (process.env.FVE_SMOKE) {
-    win.webContents.once('did-finish-load', () => require('./smoke.cjs')(win, app, process.env.FVE_SMOKE));
+    const mod = process.env.FVE_SMOKE_MODE === 'rocket' ? './smoke-rocket.cjs' : './smoke.cjs';
+    win.webContents.once('did-finish-load', () => require(mod)(win, app, process.env.FVE_SMOKE));
   }
 }
 
@@ -176,6 +177,7 @@ ipcMain.handle('rocket:shorts', async (_e, project, opts) => {
   const a = project.autoEdit;
   if (!a) return { ok: false, error: 'Run Auto Edit first so the highlights are known.' };
   const src = project.media.find((m) => m.id === a.sourceMediaId);
+  if (!src) return { ok: false, error: 'The video Auto Edit used is no longer in the project. Import it again and re-run Auto Edit.' };
   const res = await dialog.showOpenDialog(win, { title: 'Folder for the Shorts', properties: ['openDirectory', 'createDirectory'] });
   if (res.canceled) return { canceled: true };
   const list = a.highlights.slice(0, opts.count ?? a.highlights.length);
