@@ -44,8 +44,9 @@ async function autoEdit(base, opts, onProgress) {
   const st = STYLES[style];
   const captions = opts.captionsFile ? readSrt(opts.captionsFile) : opts.captions || null;
 
+  const pro = style === 'pro';
   const a = await analyze(media.path, {
-    mode: opts.cut || 'dead', minGap: opts.minGap ?? 1.2, captions,
+    mode: opts.cut || (pro ? 'speech' : 'dead'), minGap: opts.minGap ?? 1.2, speechGap: opts.speechGap, captions,
     removeSpans: opts.fillers, shortLen: opts.shortLen ?? 30, maxShorts: opts.shorts ?? 3,
   }, onProgress);
   onProgress?.('Building your timeline', 1);
@@ -53,7 +54,8 @@ async function autoEdit(base, opts, onProgress) {
   // 1) Main track: one clip per kept segment, transitions between long-enough neighbours.
   const T = st.duration;
   let keep = a.keep.map(([i, o]) => ({ in: i, out: o }));
-  const useTrans = opts.transitions !== false;
+  // Styles without transition types (Pro) use hard jump cuts: no transitions, no trimming around cuts.
+  const useTrans = opts.transitions !== false && st.transitions.length > 0;
   const canTrans = (x, y) => useTrans && x.out - x.in >= 2 * T + 0.4 && y.out - y.in >= 2 * T + 0.4;
   // Transitions should blend action, not the quiet padding left around a cut: trim it.
   for (let i = 0; i < keep.length - 1; i++) {
@@ -63,15 +65,71 @@ async function autoEdit(base, opts, onProgress) {
     }
   }
   let t = 0;
-  const clips = keep.map((k, i) => {
+  let clips = keep.map((k, i) => {
     const c = { id: id('c'), mediaId: media.id, in: r3(k.in), out: r3(k.out), volume: 1, muted: false };
     if (i < keep.length - 1 && canTrans(keep[i], keep[i + 1])) {
       c.transition = { type: st.transitions[t++ % st.transitions.length], duration: T };
     }
     return c;
   });
+
+  // Pattern interrupts: no shot stays static too long. Long stretches are split into chunks
+  // (every ~15 s in the first 3 minutes, ~30 s after) that alternate normal and punched-in framing.
+  let jumpZooms = 0;
+  if (opts.jumpZooms !== false && !pro) {
+    const zoomIn = style === 'clean' ? 1.08 : 1.14;
+    const out = [];
+    let pos = 0;
+    for (const c of clips) {
+      const len = c.out - c.in;
+      const every = pos < 180 ? 15 : 30;
+      const n = len > every ? Math.ceil(len / every) : 1; // no shot stays static longer than `every`
+      if (n >= 2) {
+        const step = len / n;
+        for (let k = 0; k < n; k++) {
+          const part = { ...c, id: id('c'), in: r3(c.in + k * step), out: k === n - 1 ? c.out : r3(c.in + (k + 1) * step) };
+          if (k < n - 1) delete part.transition; // the clip's own transition stays on its last chunk
+          if (k % 2 === 1) { part.zoom = zoomIn; jumpZooms++; }
+          out.push(part);
+        }
+      } else out.push(c);
+      pos += len;
+    }
+    clips = out;
+  }
+
+  // Pro: most shots stay at 1.0; punch in to 1.25x only around the moments that matter (the highlights).
+  if (pro && opts.punchIns !== false) {
+    for (const h of a.highlights) {
+      const s0 = h.peak - 1.2;
+      const s1 = h.peak + 1.8;
+      const i = clips.findIndex((c) => c.in < h.peak && c.out > h.peak);
+      if (i < 0) continue;
+      const c = clips[i];
+      const parts = [];
+      if (s0 - c.in > 0.5) parts.push({ ...c, id: id('c'), out: r3(s0), transition: undefined });
+      parts.push({ ...c, id: id('c'), in: r3(Math.max(c.in, s0)), out: r3(Math.min(c.out, s1)), zoom: 1.25, transition: c.out - s1 > 0.5 ? undefined : c.transition });
+      if (c.out - s1 > 0.5) parts.push({ ...c, id: id('c'), in: r3(s1) });
+      clips.splice(i, 1, ...parts);
+      jumpZooms++;
+    }
+  }
+
+  // Cold open: the best moment plays first (~3 s, punched in), then a white flash into the video.
+  let teaser = null;
+  if (opts.teaser !== false && !pro && style !== 'clean' && a.highlights.length && a.info.duration > 40) {
+    const p = a.highlights[0].peak;
+    const tin = Math.max(0, p - 2.2);
+    const tout = Math.min(a.info.duration, p + 1.0);
+    if (tout - tin > 2) {
+      teaser = { id: id('c'), mediaId: media.id, in: r3(tin), out: r3(tout), volume: 1, muted: false, zoom: 1.12, teaser: true,
+        transition: { type: 'fadewhite', duration: 0.3 } };
+      clips = [teaser, ...clips];
+    }
+  }
   const layout = videoLayout(clips);
-  const segments = layout.map((l) => ({ in: l.clip.in, out: l.clip.out, start: l.start }));
+  // Mapping source -> timeline uses the main edit only (the teaser repeats a moment from later on).
+  const segments = layout.filter((l) => !l.clip.teaser).map((l) => ({ in: l.clip.in, out: l.clip.out, start: l.start }));
   const total = layout[layout.length - 1].end;
   // Source time -> timeline time (null if that moment was cut).
   const toTimeline = (src) => {
@@ -129,8 +187,8 @@ async function autoEdit(base, opts, onProgress) {
   const size = projectSize(a.info);
   const textClips = [];
   if (opts.hook) {
-    textClips.push({ id: id('t'), text: opts.hook.toUpperCase(), start: 0.15, duration: Math.min(3, total), x: 0.5, y: 0.12,
-      size: Math.round(size.height * (size.height > size.width ? 0.04 : 0.075)), color: '#ffffff', anim: 'pop' });
+    textClips.push({ id: id('t'), text: opts.hook.toUpperCase(), start: 0.15, duration: Math.min(3, total), x: 0.5, y: size.height > size.width ? 0.2 : 0.12,
+      size: Math.round(size.height * (size.height > size.width ? 0.04 : 0.075)), color: '#ffffff', anim: pro ? undefined : 'pop' });
   }
 
   const project = {
@@ -142,10 +200,10 @@ async function autoEdit(base, opts, onProgress) {
     audioClips: [...base.audioClips.filter((c) => !c.sfx), ...audioClips],
     effects,
     captionClips,
-    captionStyle: { style: captionClips.length ? opts.captionStyle || 'karaoke' : 'off' },
-    grade: style !== 'clean',
+    captionStyle: { style: captionClips.length ? (pro ? 'read' : opts.captionStyle || 'karaoke') : 'off' },
+    grade: style !== 'clean' && !pro,
     loudnorm: true,
-    fades: true,
+    fades: !pro,
     autoEdit: {
       sourceMediaId: media.id, style, highlights: a.highlights, keep: a.keep, captionsFile: opts.captionsFile || null,
       sourceCaptions: captions || null, peaks,
@@ -155,8 +213,11 @@ async function autoEdit(base, opts, onProgress) {
     originalSeconds: Math.round(a.info.duration * 10) / 10,
     editedSeconds: Math.round(total * 10) / 10,
     removedSeconds: a.removedSeconds,
+    silentGapsLeft: a.silentGapsLeft,
     fillersRemoved: a.fillersRemoved,
     cuts: clips.length - 1,
+    jumpZooms,
+    teaser: !!teaser,
     transitions: clips.filter((c) => c.transition).length,
     effects: effects.length,
     sfx: audioClips.length,

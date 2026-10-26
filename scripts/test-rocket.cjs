@@ -65,6 +65,40 @@ const assert = (ok, msg) => { if (!ok) throw new Error('FAILED: ' + msg); consol
 
   const pack = fallbackPack({ highlights: report.highlights, captions: project.autoEdit.sourceCaptions, editedSeconds: report.editedSeconds, game: 'Fortnite' });
   assert(pack.titles.length === 3 && pack.chapters[0].time === '0:00', 'YouTube pack (titles + chapters)');
+  console.log('Long take: punch-in zooms + teaser…');
+  const longSrc = path.join(dir, 'long.mp4');
+  gen(['-f', 'lavfi', '-i', 'testsrc2=s=1280x720:r=30:d=75', '-f', 'lavfi', '-i', 'anoisesrc=d=75:a=0.1:r=48000',
+    '-af', 'volume=enable=between(t\\,50\\,54):volume=8', '-t', '75', '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', '-ac', '2', longSrc]);
+  const li = await probe(longSrc);
+  const lm = { id: 'm2', path: longSrc, name: 'long.mp4', type: 'video', ...li };
+  const r2 = await autoEdit({ ...base, media: [lm] }, { media: lm, style: 'hype', sfxDir: path.join(dir, 'sfx'), shorts: 1, shortLen: 10 });
+  assert(r2.report.jumpZooms >= 1 && r2.project.videoClips.every((c) => c.out - c.in <= 15.01), `${r2.report.jumpZooms} punch-in zoom(s); no shot longer than 15 s`);
+  assert(r2.report.teaser && r2.project.videoClips[0].teaser, 'teaser opens the video');
+  assert(Math.abs(r2.report.highlights[0].peak - 52) < 3 && r2.report.highlights[0].timeline > 3, 'highlight maps into the main edit, not the teaser');
+  const lout = path.join(dir, 'long_edit.mp4');
+  await runExport({ ...r2.project, draft: true }, lout).promise;
+  const lo = await probe(lout);
+  const lexp = videoLayout(r2.project.videoClips).slice(-1)[0].end;
+  assert(Math.abs(lo.duration - lexp) < 0.3, `zoomed export ${lo.duration.toFixed(2)}s (expected ${lexp.toFixed(2)}s)`);
+
+  console.log('Pro style (talking): zero dead space, read captions, money in full…');
+  const talk = path.join(dir, 'talk.mp4');
+  // 30 s of "speech" with a 0.6 s room-tone pause every 3 s (10 pauses)
+  gen(['-f', 'lavfi', '-i', 'testsrc2=s=1080x1920:r=30:d=30', '-f', 'lavfi', '-i', 'anoisesrc=d=30:a=0.3:r=48000',
+    '-af', "volume='if(lt(mod(t,3),2.4),1,0.01)':eval=frame", '-t', '30', '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', '-ac', '2', talk]);
+  const tsrt = path.join(dir, 'talk.srt');
+  fs.writeFileSync(tsrt, '1\n00:00:00,500 --> 00:00:04,000\nso I went to the bank and we hit $11.5k MRR\n');
+  const ti = await probe(talk);
+  const tm = { id: 'm3', path: talk, name: 'talk.mp4', type: 'video', ...ti };
+  const r3 = await autoEdit({ ...base, media: [tm] }, { media: tm, style: 'pro', captionsFile: tsrt, sfxDir: path.join(dir, 'sfx'), shorts: 1, shortLen: 10 });
+  // each 0.6 s pause loses all but 60 ms of word fade + 10 ms lead-in -> ~0.53 s x 10
+  assert(r3.report.removedSeconds > 4.8 && r3.report.removedSeconds < 5.8 && r3.report.silentGapsLeft === 0, `pauses cut: ${r3.report.removedSeconds}s (~5.3s expected), ${r3.report.silentGapsLeft} left`);
+  assert(r3.report.transitions === 0 && r3.report.effects === 0 && r3.report.sfx === 0, 'Pro: hard cuts, no effects, no SFX');
+  const texts = r3.project.captionClips.map((c) => c.text);
+  assert(texts.includes('$11,500 MRR'), `money in full (${texts.join(' | ')})`);
+  assert(!texts.some((t) => /\b(a|the|to|my|and)$/i.test(t)), 'no caption ends on a weak word');
+  assert(r3.project.captionStyle.style === 'read', 'read captions');
+
   console.log('\nROCKET OK  ' + dir);
 })().catch((e) => {
   console.error(e.message.slice(-3000));

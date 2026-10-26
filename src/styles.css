@@ -162,6 +162,7 @@ video.glitching { animation: glitch-jitter 0.08s steps(2) infinite; }
 }
 .caption-preview .hl { color: #ffe500; }
 .caption-preview.clean { font-weight: 700; animation: none; }
+.caption-preview.read { font-weight: 600; font-family: 'TikTok Sans', 'Segoe UI', sans-serif; animation: none; text-shadow: 0 0 13px rgba(0,0,0,.2) !important; }
 @keyframes cap-pop { 0% { transform: scale(0.6); } 55% { transform: scale(1.15); } 100% { transform: scale(1); } }
 .overlay-text.pop { animation: text-pop 0.5s cubic-bezier(.2, 1.6, .4, 1); }
 @keyframes text-pop { 0% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); } 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
@@ -178,7 +179,7 @@ video.glitching { animation: glitch-jitter 0.08s steps(2) infinite; }
 .inspector select {
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 5px; padding: 6px 7px; width: 100%; color: var(--text); font: inherit;
 }
-.style-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.style-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .style-card { display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 9px 10px; }
 .style-card span { color: var(--dim); font-size: 11px; line-height: 1.3; }
 .style-card.on { border-color: #ff3d8b; background: #2a1d27; }

@@ -176,7 +176,18 @@ Then, from the top bar:
 - **✨ YouTube pack** — 3 titles, a description with **chapters**, tags, Short hooks and a thumbnail (best frame, boosted colours, big outlined text). Written by **Claude** if you add your own Anthropic API key in ⚙ Settings, otherwise from templates.
 - **Save captions as .srt** (Inspector, nothing selected) — the retimed captions to upload to YouTube.
 
-Three styles: **Crazy** (default), **Hype** and **Clean**. Every Auto Edit is one undo step (Ctrl+Z).
+Four styles: **Pro**, **Crazy** (default), **Hype** and **Clean**. Every Auto Edit is one undo step (Ctrl+Z).
+
+**Pro** follows a strict set of creator editing rules:
+- **Zero dead space.** Every pause 11 dB under your speaking level is cut, measured in 20 ms steps. 60 ms of each word's fade is kept, and every join is checked for leftover silence.
+- **Captions for reading.** 2–3 words at a time, never ending on a weak word (a, the, to, my, and…). TikTok Sans in pure white with a soft 20% shadow, one line, no outline or animation.
+- **Money in full.** "$11.5k" becomes "$11,500".
+- **Nothing flashy.** No transitions, effects or sound effects. Punch-ins (1.25×) only on the moments that matter.
+- **Safe zones.** Text in Shorts stays out of the top 15% and bottom 20% that the app's buttons cover.
+
+**Retention:**
+- **Punch-in zooms.** No shot stays static longer than 15 s in the first 3 minutes, or 30 s after that.
+- **Teaser.** An optional cold open plays the best moment first.
 
 Code: `electron/rocket/` (analysis, captions, effects, SFX, Auto Edit, Shorts, Claude) and `src/components/Rocket.jsx`.
 Test without Electron: `npm run test:rocket`.

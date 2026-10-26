@@ -89,10 +89,13 @@ export default function Preview({ project, time, seekVer, playing, duration, onT
   const glitch = fx.some((e) => e.type === 'glitch');
   const invert = fx.some((e) => e.type === 'invert');
   const shake = fx.find((e) => e.type === 'shake');
+  const curClip = videoLayout(project.videoClips).find((l) => time >= l.start && time < l.end)?.clip;
+  const zoom = curClip?.zoom && curClip.zoom > 1 ? curClip.zoom : 1;
   const shakeT = shake ? (time - shake.start) : 0;
   const stageFx = {
     filter: [glitch && 'saturate(2.2) contrast(1.3) hue-rotate(25deg)', invert && 'invert(1)', project.grade && 'contrast(1.06) saturate(1.22)'].filter(Boolean).join(' ') || undefined,
-    transform: shake ? `translate(${(14 * Math.sin(shakeT * 95) * (1 - shakeT / shake.duration)) * scale}px, ${(14 * Math.sin(shakeT * 71 + 1.3) * (1 - shakeT / shake.duration)) * scale}px) scale(1.04)` : undefined,
+    transform: shake ? `translate(${(14 * Math.sin(shakeT * 95) * (1 - shakeT / shake.duration)) * scale}px, ${(14 * Math.sin(shakeT * 71 + 1.3) * (1 - shakeT / shake.duration)) * scale}px) scale(${1.04 * zoom})`
+      : zoom > 1 ? `scale(${zoom})` : undefined,
   };
 
   return (
@@ -128,10 +131,13 @@ export default function Preview({ project, time, seekVer, playing, duration, onT
 function CaptionView({ caption, time, style, scale, height, size, vertical }) {
   const words = caption.text.split(/\s+/).filter(Boolean);
   const k = Math.min(words.length - 1, Math.floor(((time - caption.start) / caption.duration) * words.length));
-  const px = (vertical ? height * 0.052 : height * 0.06) * size * scale;
-  const bottom = (vertical ? 0.22 : 0.07) * 100;
+  const read = style === 'read';
+  const px = (read ? Math.min(height, (height * 9) / 16 > 0 && vertical ? height * 0.5625 : height) * (52 / 1080) : vertical ? height * 0.052 : height * 0.06) * size * scale;
+  const pos = read
+    ? { top: `${vertical ? (1055 / 1920) * 100 : 82}%`, transform: 'translateY(-50%)' }
+    : { bottom: `${(vertical ? 0.22 : 0.07) * 100}%`, textShadow: outline(Math.max(1.5, px / 12)) };
   return (
-    <div className={`caption-preview ${style}`} style={{ fontSize: `${px}px`, bottom: `${bottom}%`, textShadow: outline(Math.max(1.5, (px / 12))) }}>
+    <div className={`caption-preview ${style}`} style={{ fontSize: `${px}px`, ...pos }}>
       {words.map((w, i) => (
         <span key={i} className={style === 'karaoke' && i === k ? 'hl' : ''}>{style === 'clean' ? w : w.toUpperCase()}{' '}</span>
       ))}

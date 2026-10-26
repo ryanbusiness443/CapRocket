@@ -1,6 +1,7 @@
 // Captions: SRT read/write, filler-word cleanup, retiming onto an edited timeline,
 // short punchy chunks, and animated ASS subtitles (pop-in + word-by-word highlight).
 const fs = require('fs');
+const path = require('path');
 
 function parseTime(s) {
   const m = /(\d+):(\d+):(\d+)[,.](\d+)/.exec(s.trim());
@@ -40,8 +41,21 @@ function writeSrt(items, file) {
 }
 
 const FILLER_RE = /(^|[^\w'])(um+|uh+|erm+|uhm+|hmm+)(?![\w'])[,.]?\s*/gi;
+
+// Money in full: "$11.5k" -> "$11,500", "2k dollars" -> "$2,000". Other counts ("10k views") stay as spoken.
+function formatMoney(t) {
+  const full = (n, unit) => {
+    const v = Math.round(parseFloat(n) * ({ k: 1e3, m: 1e6, b: 1e9 }[(unit || '').toLowerCase()] || 1));
+    return '$' + v.toLocaleString('en-US');
+  };
+  return t
+    .replace(/\$\s?(\d+(?:\.\d+)?)\s?([kmb])\b/gi, (_, n, u) => full(n, u))
+    .replace(/\$(\d{4,})(?![\d,])/g, (_, n) => full(n))
+    .replace(/\b(\d+(?:\.\d+)?)\s?([kmb])?\s+(?:dollars|bucks)\b/gi, (_, n, u) => full(n, u));
+}
+
 function cleanText(t) {
-  return t.replace(FILLER_RE, '$1').replace(/\s{2,}/g, ' ').replace(/^[\s,]+/, '').trim();
+  return formatMoney(t.replace(FILLER_RE, '$1').replace(/\s{2,}/g, ' ').replace(/^[\s,]+/, '').trim());
 }
 
 // segments: [{ in, out, start }] = source range [in, out] placed at timeline `start`.
@@ -62,16 +76,26 @@ function remapToTimeline(items, segments) {
   return out;
 }
 
-// Splits captions into chunks of at most `maxWords` words, timed evenly.
+// A chunk never ends on one of these (rule: never end a caption on a weak word).
+const WEAK = new Set(['a', 'an', 'the', 'to', 'my', 'and', 'of', 'in', 'on', 'at', 'for', 'with', 'is', 'i', 'your', 'our', 'but', 'or', 'so', 'it', 'this', 'that', 'be']);
+const isWeak = (w) => WEAK.has(w.toLowerCase().replace(/[^a-z']/g, ''));
+
+// Splits captions into short chunks (<= maxWords), timed by word count, never ending on a weak word.
 function chunk(items, maxWords = 3) {
   const out = [];
   for (const c of items) {
     const words = c.text.split(/\s+/).filter(Boolean);
     if (!words.length) continue;
-    const n = Math.ceil(words.length / maxWords);
-    const step = (c.end - c.start) / n;
-    for (let k = 0; k < n; k++) {
-      out.push({ start: c.start + k * step, end: c.start + (k + 1) * step, text: words.slice(k * maxWords, (k + 1) * maxWords).join(' ') });
+    const per = (c.end - c.start) / words.length;
+    let i = 0;
+    while (i < words.length) {
+      let n = Math.min(maxWords, words.length - i);
+      // shorten while the chunk would end on a weak word and more words follow
+      while (n > 1 && i + n < words.length && isWeak(words[i + n - 1])) n--;
+      // a lone weak word pulls in the next one instead
+      if (n === 1 && isWeak(words[i]) && i + 1 < words.length) n = 2;
+      out.push({ start: c.start + i * per, end: c.start + (i + n) * per, text: words.slice(i, i + n).join(' ') });
+      i += n;
     }
   }
   return out;
@@ -90,6 +114,7 @@ function assColor(hex) {
 }
 
 const STYLES = {
+  read: { upper: false, highlight: null, pop: false, words: false, read: true },
   karaoke: { upper: true, highlight: '#FFE500', pop: true, words: true },
   pop: { upper: true, highlight: null, pop: true, words: false, alternate: '#FFE500' },
   clean: { upper: false, highlight: null, pop: false, words: false },
@@ -98,6 +123,7 @@ const STYLES = {
 // items: [{ start, end, text }] in output time. Returns the .ass text (and writes it if `file`).
 function writeAss(items, { width, height, vertical = height > width, style = 'karaoke', font = 'Arial Black', file, sizeScale = 1 } = {}) {
   const st = STYLES[style] || STYLES.karaoke;
+  if (st.read) return writeReadAss(items, { width, height, vertical, file, sizeScale });
   const size = Math.round((vertical ? height * 0.052 : height * 0.06) * sizeScale);
   const marginV = Math.round(vertical ? height * 0.22 : height * 0.07);
   const outline = Math.max(3, Math.round(size / 12));
@@ -134,4 +160,36 @@ function writeAss(items, { width, height, vertical = height > width, style = 'ka
   return text;
 }
 
-module.exports = { parseSrt, readSrt, writeSrt, cleanText, remapToTimeline, chunk, writeAss, assColor, fmtSrtTime };
+// Pro "read" captions: TikTok Sans, pure white, one centred line, soft shadow only (black 20%, blur 13 px),
+// no outline / box / highlight / animation. 52 px on a 1080-wide frame; centred at y 1055 of 1920
+// (on the mouth) in vertical video, in the lower third for 16:9.
+function writeReadAss(items, { width, height, vertical, file, sizeScale = 1 }) {
+  const ref = Math.min(width, height);
+  const size = Math.round(ref * (52 / 1080) * sizeScale);
+  const blur = Math.max(1, Math.round(ref * (13 / 1080)));
+  const x = Math.round(width / 2);
+  const y = Math.round(vertical ? height * (1055 / 1920) : height * 0.82);
+  const head = [
+    '[Script Info]', 'ScriptType: v4.00+', `PlayResX: ${width}`, `PlayResY: ${height}`, 'WrapStyle: 2', 'ScaledBorderAndShadow: yes', '',
+    '[V4+ Styles]',
+    'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+    `Style: Read,TikTok Sans SemiBold,${size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,20,20,0,1`,
+    '', '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+  ];
+  const lines = [];
+  for (const c of items) {
+    const t = c.text.replace(/[{}]/g, '').replace(/\s+/g, ' ').trim();
+    const s = assTime(c.start);
+    const e = assTime(c.end);
+    // soft shadow: the same words in black at 20 % opacity, blurred, under the white text
+    lines.push(`Dialogue: 0,${s},${e},Read,,0,0,0,,{\\an5\\pos(${x},${y})\\1c&H000000&\\1a&HCC&\\blur${blur}}${t}`);
+    lines.push(`Dialogue: 1,${s},${e},Read,,0,0,0,,{\\an5\\pos(${x},${y})}${t}`);
+  }
+  const text = head.concat(lines).join('\n') + '\n';
+  if (file) fs.writeFileSync(file, text, 'utf8');
+  return text;
+}
+
+const FONTS_DIR = path.join(__dirname, 'fonts').replace('app.asar', 'app.asar.unpacked');
+
+module.exports = { formatMoney, isWeak, FONTS_DIR, parseSrt, readSrt, writeSrt, cleanText, remapToTimeline, chunk, writeAss, assColor, fmtSrtTime };

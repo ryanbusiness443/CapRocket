@@ -135,6 +135,7 @@ export default function Inspector({ project, selection, dispatch }) {
           <Num label="Début source (s)" value={clip.in} min={0} onChange={(v) => set({ in: Math.max(0, Math.min(v, clip.out - 0.1)) })} />
           <Num label="Fin source (s)" value={clip.out} onChange={(v) => set({ out: Math.max(clip.in + 0.1, Math.min(v, media?.duration ?? v)) })} />
           <Slider label="Volume" value={clip.volume ?? 1} max={2} fmt={pct} onChange={(volume) => set({ volume })} />
+          <Slider label="Zoom (punch-in)" value={clip.zoom ?? 1} min={1} max={1.6} step={0.01} fmt={pct} onChange={(zoom) => set({ zoom })} />
           <label className="field row">
             <span>Muet</span>
             <input type="checkbox" checked={!!clip.muted} onChange={(e) => set({ muted: e.target.checked })} />

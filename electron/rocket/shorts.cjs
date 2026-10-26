@@ -5,7 +5,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { ffmpegPath, filterPath, DEFAULT_FONT, captionFont } = require('../ffmpeg.cjs');
 const { STYLES, effectChain, hitEffects, popText, escText } = require('./effects.cjs');
-const { remapToTimeline, chunk, writeAss } = require('./captions.cjs');
+const { remapToTimeline, chunk, writeAss, FONTS_DIR } = require('./captions.cjs');
 const { ensureLibrary } = require('./sfx.cjs');
 
 const n3 = (v) => Number(v).toFixed(3);
@@ -64,7 +64,8 @@ async function renderShort(src, a, h, out, opts = {}, onProgress) {
 
     const fgH = opts.layout === 'crop916' ? H : 1350;
     const crop = opts.layout === 'crop916' ? 'crop=\'min(iw,ih*9/16)\':ih' : 'crop=\'min(iw,ih*4/5)\':ih';
-    const zoom = `1+0.14*exp(-pow((it-${n3(peak)})/0.35,2))`;
+    const pro = style === 'pro';
+    const zoom = pro ? '1' : `1+0.14*exp(-pow((it-${n3(peak)})/0.35,2))`;
     let g = `[0:v]select='${sel}',setpts=N/FRAME_RATE/TB,split[a][b];` +
       `[a]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},gblur=sigma=28,eq=brightness=-0.12:saturation=1.1[bg];` +
       `[b]${crop},scale=${W}:${fgH},setsar=1,zoompan=z='${zoom}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${fgH}:fps=${fps}[fg];` +
@@ -74,19 +75,26 @@ async function renderShort(src, a, h, out, opts = {}, onProgress) {
     if (opts.hook) {
       const tf = path.join(tmp, 'hook.txt');
       fs.writeFileSync(tf, opts.hook.toUpperCase(), 'utf8');
-      g += ',' + popText({ fontExpr: filterPath(DEFAULT_FONT), textExpr: `textfile=${filterPath(tf)}:expansion=none`, size: 72, x: '(w-text_w)/2', y: '150+(72-text_h)/2', start: 0.15, end: dur + 99 });
+      // Safe zone: the top 15 % of a Short (y < 288) sits under the app's UI, so the hook starts below it.
+      if (pro) {
+        g += `,drawtext=fontfile=${filterPath(DEFAULT_FONT)}:textfile=${filterPath(tf)}:expansion=none:fontsize=72:fontcolor=white:` +
+          "shadowcolor=black@0.35:shadowx=0:shadowy=4:x=(w-text_w)/2:y=330";
+      } else {
+        g += ',' + popText({ fontExpr: filterPath(DEFAULT_FONT), textExpr: `textfile=${filterPath(tf)}:expansion=none`, size: 72, x: '(w-text_w)/2', y: '330+(72-text_h)/2', start: 0.15, end: dur + 99 });
+      }
     }
     if (a.sourceCaptions && a.sourceCaptions.length) {
       const inWin = a.sourceCaptions.filter((c) => c.end > s && c.start < end).map((c) => ({ start: c.start - s, end: c.end - s, text: c.text }));
       const caps = chunk(remapToTimeline(inWin, local), 3);
       if (caps.length) {
         const ass = path.join(tmp, 'caps.ass');
-        writeAss(caps, { width: W, height: H, style: opts.captionStyle || 'karaoke', font: captionFont(), file: ass, sizeScale: 1.1 });
-        const fontsDir = process.platform === 'win32' ? 'C:/Windows/Fonts' : path.dirname(DEFAULT_FONT);
+        const capStyle = pro ? 'read' : opts.captionStyle || 'karaoke';
+        writeAss(caps, { width: W, height: H, style: capStyle, font: captionFont(), file: ass, sizeScale: pro ? 1 : 1.1 });
+        const fontsDir = capStyle === 'read' ? FONTS_DIR : process.platform === 'win32' ? 'C:/Windows/Fonts' : path.dirname(DEFAULT_FONT);
         g += `,ass=${filterPath(ass)}:fontsdir=${filterPath(fontsDir)}`;
       }
     }
-    const replay = opts.replay !== false && style !== 'clean';
+    const replay = opts.replay !== false && style !== 'clean' && !pro;
     g += ',fade=t=in:st=0:d=0.3' + (replay ? '' : `,fade=t=out:st=${n3(dur - 0.4)}:d=0.4`) + '[v]';
 
     const inputs = ['-ss', n3(s), '-t', n3(end - s), '-i', src.path];
@@ -124,7 +132,7 @@ async function renderShort(src, a, h, out, opts = {}, onProgress) {
       const after = 0.7;
       const rs = Math.max(0, peak - before);
       const rd = Math.min(before + after, dur - rs);
-      const tag = `drawtext=fontfile=${filterPath(DEFAULT_FONT)}:text='REPLAY':fontsize=64:fontcolor=red:borderw=6:bordercolor=white:x=60:y=60:alpha='0.55+0.45*sin(t*9)'`;
+      const tag = `drawtext=fontfile=${filterPath(DEFAULT_FONT)}:text='REPLAY':fontsize=64:fontcolor=red:borderw=6:bordercolor=white:x=60:y=330:alpha='0.55+0.45*sin(t*9)'`;
       const rp = path.join(tmp, 'replay.mp4');
       await ff(['-ss', n3(rs), '-t', n3(rd), '-i', main, '-filter_complex',
         `[0:v]setpts=PTS/0.5,fps=${fps},settb=AVTB,eq=contrast=1.12:saturation=0.75,vignette=PI/4,tmix=frames=3,${tag},format=yuv420p[v];` +

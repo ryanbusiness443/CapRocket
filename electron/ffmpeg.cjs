@@ -5,7 +5,7 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const { effectChain, popText } = require('./rocket/effects.cjs');
-const { writeAss } = require('./rocket/captions.cjs');
+const { writeAss, FONTS_DIR: CAPTION_FONTS_DIR } = require('./rocket/captions.cjs');
 
 // FFmpeg binaries: the bundled static builds, or FFMPEG_PATH / FFPROBE_PATH, or whatever is on PATH.
 function binary(envName, mod, pick) {
@@ -139,8 +139,11 @@ function planPieces(project) {
 }
 
 const SR = 48000;
-const normV = (W, H, fps) =>
+// zoom > 1 punches in (static crop around the centre): the editor's "jump zoom".
+const even = (v) => Math.round(v / 2) * 2;
+const normV = (W, H, fps, zoom = 1) =>
   `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,` +
+  (zoom > 1.001 ? `scale=${even(W * zoom)}:${even(H * zoom)},crop=${W}:${H},` : '') +
   `fps=${fps},settb=AVTB,format=yuv420p,tpad=stop_mode=clone:stop_duration=2`;
 const normA = (vol) => `aresample=${SR}:async=1:first_pts=0,aformat=sample_fmts=s16:channel_layouts=stereo,volume=${vol}`;
 
@@ -148,7 +151,7 @@ const normA = (vol) => `aresample=${SR}:async=1:first_pts=0,aformat=sample_fmts=
 function sourceChain(part, idx, dur, W, H, fps) {
   const { media, clip } = part;
   const args = ['-ss', num(Math.max(0, part.src)), '-t', num(dur + 0.5), '-i', media.path];
-  const v = `[${idx}:v]${normV(W, H, fps)}`;
+  const v = `[${idx}:v]${normV(W, H, fps, clip.zoom || 1)}`;
   const hasA = media.hasAudio && !clip.muted;
   const a = hasA ? `[${idx}:a]${normA(clip.volume ?? 1)}` : null;
   return { args, v, a };
@@ -226,7 +229,7 @@ function finalArgs(project, listFile, total, outFile, tmpDir) {
     const assFile = path.join(tmpDir, 'captions.ass');
     writeAss(caps.map((c) => ({ start: c.start, end: c.start + c.duration, text: c.text })),
       { width: W, height: H, style: capStyle, font: project.captionStyle?.font || captionFont(), sizeScale: project.captionStyle?.size ?? 1, file: assFile });
-    const fontsDir = process.platform === 'win32' ? 'C:/Windows/Fonts' : path.dirname(DEFAULT_FONT);
+    const fontsDir = capStyle === 'read' ? CAPTION_FONTS_DIR : process.platform === 'win32' ? 'C:/Windows/Fonts' : path.dirname(DEFAULT_FONT);
     filters.push(`[${vLabel}]ass=${filterPath(assFile)}:fontsdir=${filterPath(fontsDir)}[vcap]`);
     vLabel = 'vcap';
   }

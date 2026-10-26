@@ -11,6 +11,8 @@ const TRANSITIONS = {
 
 // Auto Edit styles.
 const STYLES = {
+  // Pro: hard jump cuts, no hits, no SFX; captions for reading (see the Pro rules in captions.cjs).
+  pro: { label: 'Pro', transitions: [], duration: 0, hits: [], sfx: false },
   clean: { label: 'Clean', transitions: ['fade'], duration: 0.25, hits: [], sfx: false },
   hype: { label: 'Hype', transitions: ['fadewhite', 'zoomin', 'smoothleft', 'slideleft'], duration: 0.3, hits: ['flash', 'shake'], sfx: true },
   crazy: {

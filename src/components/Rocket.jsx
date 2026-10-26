@@ -60,7 +60,7 @@ export function AutoEditDialog({ project, onClose, onApply, onShorts, onPack }) 
   const [o, setO] = useState({
     mediaId: project.autoEdit?.sourceMediaId || project.videoClips[0]?.mediaId || videos[0]?.id || '',
     style: 'crazy', cut: 'dead', minGap: 1.2, transitions: true, effects: true, sfx: true,
-    captionsFile: null, captionStyle: 'karaoke', fillers: null, hook: '', shorts: 3, shortLen: 30,
+    captionsFile: null, captionStyle: 'karaoke', fillers: null, hook: '', shorts: 3, shortLen: 30, jumpZooms: true, teaser: true,
   });
   const [captions, setCaptions] = useState(null);
   const [fillers, setFillers] = useState(null);
@@ -116,11 +116,14 @@ export function AutoEditDialog({ project, onClose, onApply, onShorts, onPack }) 
           <div><b>{formatTime(r.originalSeconds).slice(0, 5)}</b><span>original</span></div>
           <div><b>{formatTime(r.editedSeconds).slice(0, 5)}</b><span>edited</span></div>
           <div><b>{r.removedSeconds}s</b><span>dead air cut</span></div>
+          {r.silentGapsLeft != null && <div><b>{r.silentGapsLeft}</b><span>pauses left (checked)</span></div>}
           <div><b>{r.transitions}</b><span>transitions</span></div>
           <div><b>{r.effects}</b><span>effects</span></div>
           <div><b>{r.sfx}</b><span>sound effects</span></div>
           <div><b>{r.captions}</b><span>captions</span></div>
           <div><b>{r.highlights.length}</b><span>highlights</span></div>
+          <div><b>{r.jumpZooms || 0}</b><span>punch-in zooms</span></div>
+          <div><b>{r.teaser ? 'Yes' : 'No'}</b><span>teaser opening</span></div>
         </div>
         {r.fillersRemoved > 0 && <p className="dim">{r.fillersRemoved} filler words cut.</p>}
         <p className="dim">Everything is on the timeline: tweak any clip, transition, effect or caption, then Export MP4. Ctrl+Z undoes the whole Auto Edit.</p>
@@ -147,7 +150,9 @@ export function AutoEditDialog({ project, onClose, onApply, onShorts, onPack }) 
           <div className="field"><span>Style</span></div>
           <div className="style-cards">
             {Object.entries(STYLES).map(([k, s]) => (
-              <button key={k} className={`style-card ${o.style === k ? 'on' : ''}`} onClick={() => set({ style: k })}>
+              <button key={k} className={`style-card ${o.style === k ? 'on' : ''}`}
+                onClick={() => set(k === 'pro' ? { style: k, cut: 'speech', jumpZooms: false, teaser: false, captionStyle: 'read' }
+                  : { style: k, cut: o.cut === 'speech' ? 'dead' : o.cut, captionStyle: o.captionStyle === 'read' ? 'karaoke' : o.captionStyle })}>
                 <b>{s.label}</b><span>{s.blurb}</span>
               </button>
             ))}
@@ -157,11 +162,12 @@ export function AutoEditDialog({ project, onClose, onApply, onShorts, onPack }) 
             <span>Cut</span>
             <select value={o.cut} onChange={(e) => set({ cut: e.target.value })}>
               <option value="dead">Dead air: quiet and nothing moving (best for gaming)</option>
+              <option value="speech">Zero dead space: every pause 11 dB under your voice (talking)</option>
               <option value="silence">Silences only (talking videos)</option>
               <option value="off">Don't cut anything</option>
             </select>
           </label>
-          {o.cut !== 'off' && (
+          {o.cut !== 'off' && o.cut !== 'speech' && (
             <label className="field">
               <span>Shortest pause to cut <b>{o.minGap.toFixed(1)} s</b></span>
               <input type="range" min="0.5" max="4" step="0.1" value={o.minGap} onChange={(e) => set({ minGap: Number(e.target.value) })} />
@@ -170,6 +176,8 @@ export function AutoEditDialog({ project, onClose, onApply, onShorts, onPack }) 
           <Toggle label="Transitions on the cuts" checked={o.transitions} onChange={(v) => set({ transitions: v })} />
           <Toggle label="Effects on highlights" hint="glitch, flash, shake, trails" checked={o.effects} onChange={(v) => set({ effects: v })} />
           <Toggle label="Sound effects" hint="whoosh, riser, boom — made on your PC" checked={o.sfx} onChange={(v) => set({ sfx: v })} />
+          <Toggle label="Punch-in zooms on long shots" hint="a framing change every 15 s (30 s after minute 3) keeps viewers watching" checked={o.jumpZooms} onChange={(v) => set({ jumpZooms: v })} />
+          <Toggle label="Open with a teaser" hint="the best moment plays first for 3 s, then the video starts" checked={o.teaser} onChange={(v) => set({ teaser: v })} />
         </section>
 
         <section>

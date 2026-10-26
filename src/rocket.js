@@ -17,9 +17,10 @@ export const EFFECTS = {
 };
 
 export const STYLES = {
+  pro: { label: 'Pro', blurb: 'Clean read captions, zero dead air, no effects' },
   crazy: { label: 'Crazy', blurb: '12 transitions, glitch hits, trails, SFX' },
   hype: { label: 'Hype', blurb: 'Flash + shake on highlights, punchy cuts' },
   clean: { label: 'Clean', blurb: 'Soft fades, no hits, no SFX' },
 };
 
-export const CAPTION_STYLES = { karaoke: 'Word highlight', pop: 'Pop-in', clean: 'Clean', off: 'Hidden' };
+export const CAPTION_STYLES = { read: 'Read (Pro)', karaoke: 'Word highlight', pop: 'Pop-in', clean: 'Clean', off: 'Hidden' };

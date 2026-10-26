@@ -16,10 +16,10 @@ function pipe(args, onData) {
   });
 }
 
-// RMS loudness in dB per window.
-async function loudness(file, duration, onProgress) {
+// RMS loudness in dB per window (default 0.25 s; talking mode uses 20 ms).
+async function loudness(file, duration, onProgress, win = WIN) {
   const sr = 8000;
-  const per = Math.round(WIN * sr);
+  const per = Math.round(win * sr);
   const out = [];
   let acc = 0;
   let cnt = 0;
@@ -39,7 +39,7 @@ async function loudness(file, duration, onProgress) {
         cnt = 0;
       }
     }
-    onProgress?.(Math.min(1, (out.length * WIN) / Math.max(duration, 0.1)));
+    onProgress?.(Math.min(1, (out.length * win) / Math.max(duration, 0.1)));
   });
   return out;
 }
@@ -112,17 +112,17 @@ function zscore(x) {
   const sd = Math.sqrt(x.reduce((a, b) => a + (b - m) ** 2, 0) / (x.length || 1));
   return x.map((v) => (v - m) / (sd > 1e-9 ? sd : 1));
 }
-function spans(mask) {
+function spans(mask, win = WIN) {
   const out = [];
   let start = null;
   mask.forEach((m, i) => {
     if (m && start === null) start = i;
     if (!m && start !== null) {
-      out.push([start * WIN, i * WIN]);
+      out.push([start * win, i * win]);
       start = null;
     }
   });
-  if (start !== null) out.push([start * WIN, mask.length * WIN]);
+  if (start !== null) out.push([start * win, mask.length * win]);
   return out;
 }
 function mergeSpans(list, gap = 0.05) {
@@ -156,7 +156,7 @@ async function analyze(file, opts = {}, onProgress) {
   // Dead air: quiet (and, in 'dead' mode, also static).
   const thr = silenceDb ?? Math.max(-50, percentile(db, 10) + 3);
   let removed = [];
-  if (mode !== 'off') {
+  if (mode !== 'off' && mode !== 'speech') {
     const quiet = smooth(db, 3).map((v) => v < thr);
     const stillThr = Math.max(0.8, percentile(mo, 15));
     const still = smooth(mo, 3).map((v) => v < stillThr);
@@ -165,6 +165,30 @@ async function analyze(file, opts = {}, onProgress) {
       .filter(([a, b]) => b - a >= minGap)
       .map(([a, b]) => [a + pad, b - pad])
       .filter(([a, b]) => b - a > 0.2);
+  }
+  // Talking mode (Pro rule "zero dead space"): every pause that sits 11 dB under the speaking level
+  // goes, measured in 20 ms steps. 60 ms of each word's fade is kept; the next word starts 20 ms early.
+  let silentGapsLeft = null;
+  if (mode === 'speech' && info.hasAudio) {
+    const FW = 0.02;
+    const fine = await loudness(file, dur, (p) => onProgress?.('Finding every pause', p), FW);
+    const peakDb = fine.reduce((m, v) => (v > m ? v : m), -120); // (no spread: long videos have 100k+ windows)
+    const voiced = fine.filter((v) => v > peakDb - 40);
+    const level = percentile(voiced.length ? voiced : fine, 90);
+    const quietThr = level - (opts.deadDb ?? 11);
+    const gap = opts.speechGap ?? 0.12;
+    removed = spans(fine.map((v) => v < quietThr), FW)
+      .filter(([a, b]) => b - a >= gap)
+      .map(([a, b]) => [a === 0 ? 0 : a + 0.06, b >= fine.length * FW - 1e-6 ? dur : b - 0.01])
+      .filter(([a, b]) => b - a > 0.04);
+    // Check: any pause still left inside what we keep?
+    const kept = (t) => !removed.some(([a, b]) => t >= a && t < b);
+    let run = 0;
+    silentGapsLeft = 0;
+    fine.forEach((v, i) => {
+      if (v < quietThr && kept(i * FW)) run++;
+      else { if (run * FW >= gap + 0.08) silentGapsLeft++; run = 0; }
+    });
   }
   let fillers = 0;
   if (removeSpans && removeSpans.length) {
@@ -205,7 +229,7 @@ async function analyze(file, opts = {}, onProgress) {
   }
   return {
     info, keep, removed: removed.map(([a, b]) => [r2(a), r2(b)]),
-    removedSeconds: r2(removed.reduce((s, [a, b]) => s + b - a, 0)), fillersRemoved: fillers,
+    removedSeconds: r2(removed.reduce((s, [a, b]) => s + b - a, 0)), fillersRemoved: fillers, silentGapsLeft,
     quietThresholdDb: r2(thr), transcriptUsed: !!(captions && captions.length), highlights,
   };
 }
