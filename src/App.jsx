@@ -5,14 +5,20 @@ import Preview from './components/Preview.jsx';
 import Timeline from './components/Timeline.jsx';
 import Inspector from './components/Inspector.jsx';
 import ExportDialog from './components/ExportDialog.jsx';
+import { AutoEditDialog, PackDialog, SettingsDialog, ShortsDialog } from './components/Rocket.jsx';
+import { EFFECTS } from './rocket.js';
 
 export default function App() {
   const [state, dispatch] = useReducer(historyReducer, { past: [], present: emptyProject(), future: [] });
   const project = state.present;
+  const projectRef = useRef(project);
+  projectRef.current = project;
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [selection, setSelection] = useState(null); // { track, id }
   const [exporting, setExporting] = useState(null);
+  const [rocket, setRocket] = useState(null); // 'auto' | 'shorts' | 'pack' | 'settings'
+  const [pack, setPack] = useState(null);
   const duration = projectDuration(project);
 
   const [seekVer, setSeekVer] = useState(0);
@@ -46,6 +52,25 @@ export default function App() {
     const clipId = uid();
     dispatch({ type: 'addText', clipId, at: time });
     setSelection({ track: 'text', id: clipId });
+  };
+
+  const addEffect = (type = 'glitch') => {
+    const clipId = uid();
+    dispatch({ type: 'addEffect', clipId, effect: type, at: time, duration: EFFECTS[type].duration });
+    setSelection({ track: 'effect', id: clipId });
+  };
+
+  const addCaption = () => {
+    const clipId = uid();
+    dispatch({ type: 'addCaption', clipId, at: time });
+    setSelection({ track: 'caption', id: clipId });
+  };
+
+  const applyAutoEdit = (p) => {
+    setPlaying(false);
+    dispatch({ type: 'replace', project: p });
+    setSelection(null);
+    seek(0);
   };
 
   const split = useCallback(() => {
@@ -99,6 +124,9 @@ export default function App() {
       pause: () => setPlaying(false),
       select: setSelection,
       dispatch,
+      open: setRocket,
+      setPack,
+      project: () => projectRef.current,
     };
   }, [seek]);
 
@@ -124,7 +152,13 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">▶ Free Video Editor</div>
+        <div className="brand">🚀 CapRocket</div>
+        <div className="actions rocket-actions">
+          <button className="rocket-btn" onClick={() => setRocket('auto')} title="Cut, transitions, effects, SFX and captions in one click">⚡ Auto Edit</button>
+          <button onClick={() => setRocket('shorts')} disabled={!project.autoEdit} title="9:16 Shorts from the highlights">🎬 Shorts</button>
+          <button onClick={() => setRocket('pack')} title="Titles, description, chapters, tags, thumbnail">✨ YouTube pack</button>
+          <button onClick={() => setRocket('settings')} title="Settings">⚙</button>
+        </div>
         <div className="actions">
           <button onClick={open}>Open</button>
           <button onClick={save}>Save</button>
@@ -144,7 +178,14 @@ export default function App() {
 
       <Timeline project={project} time={time} duration={duration} selection={selection}
         onSelect={setSelection} onSeek={seek} dispatch={dispatch}
-        onSplit={split} onDelete={remove} onAddText={addText} />
+        onSplit={split} onDelete={remove} onAddText={addText} onAddEffect={addEffect} onAddCaption={addCaption} />
+
+      {rocket === 'auto' && <AutoEditDialog project={project} onClose={() => setRocket(null)} onApply={applyAutoEdit}
+        onShorts={() => setRocket('shorts')} onPack={() => setRocket('pack')} />}
+      {rocket === 'shorts' && <ShortsDialog project={project} pack={pack} onClose={() => setRocket(null)} />}
+      {rocket === 'pack' && <PackDialog project={project} pack={pack} onPack={setPack} onClose={() => setRocket(null)}
+        onSettings={() => setRocket('settings')} />}
+      {rocket === 'settings' && <SettingsDialog onClose={() => setRocket(null)} />}
 
       {exporting && <ExportDialog state={exporting} onCancel={() => window.api.cancelExport()}
         onClose={() => setExporting(null)} onShow={() => window.api.showInFolder(exporting.file)} />}

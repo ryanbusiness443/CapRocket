@@ -47,6 +47,7 @@
 - [Why CapRocket?](#why-caprocket)
 - [Download and install](#download-and-install)
 - [Tour of the app](#tour-of-the-app)
+- [⚡ Auto Edit (RocketPilot)](#-auto-edit-rocketpilot)
 - [Features](#features)
 - [How it is built](#how-it-is-built)
 - [Run from source](#run-from-source)
@@ -152,6 +153,44 @@ Every tile is a live preview: hover it to see the effect or the transition play 
     <td align="center" width="50%"><img src="docs/media/settings.png" width="380" alt="Settings with encrypted keys" /><br /><sub><b>Settings</b>: optional keys, stored encrypted</sub></td>
   </tr>
 </table>
+
+## ⚡ Auto Edit (RocketPilot)
+
+One click turns a raw gameplay or screen recording into a finished, **still fully editable** edit.
+Everything runs on your PC with the bundled FFmpeg: no Python, no account, no upload.
+
+| Step | What Auto Edit does |
+|---|---|
+| ✂️ Cut | Removes dead air (quiet **and** nothing moving: loading screens, menus) or plain silences; filler words from a list (e.g. exported from Descript) |
+| 🎯 Highlights | Finds the best moments from loudness + on-screen action + what you say ("no way", "let's go", shouting, fast talking) |
+| 🔀 Transitions | On every cut, picked from 20 (zoom in, pixelate, radial, blur, circle, flash, squeeze, wind…) — change any of them in the Inspector |
+| 💥 Effects | Highlight hits on a new **Effects** track: glitch, flash, invert, camera shake, motion trails, colour boost |
+| 🔊 Sound effects | Whoosh on transitions, riser + bass boom (+ glitch) on highlights — generated in code, free to use anywhere |
+| 💬 Captions | From any `.srt` (YouTube, Descript, CapCut): retimed to the cuts, "um/uh" removed, punchy 3-word chunks with a **word-by-word highlight** on a new **Captions** track |
+| 🏷️ Hook title | Optional bouncing title over the first 3 seconds |
+| 🎚️ Finish | Colour boost, YouTube loudness (-14 LUFS), fade in/out |
+
+Then, from the top bar:
+
+- **🎬 Shorts** — one 1080×1920 Short per highlight: gameplay over a blurred background, bouncing hook, word-highlight captions, zoom punch and hits on the peak, and a slow-motion **REPLAY** ending.
+- **✨ YouTube pack** — 3 titles, a description with **chapters**, tags, Short hooks and a thumbnail (best frame, boosted colours, big outlined text). Written by **Claude** if you add your own Anthropic API key in ⚙ Settings, otherwise from templates.
+- **Save captions as .srt** (Inspector, nothing selected) — the retimed captions to upload to YouTube.
+
+Four styles: **Pro**, **Crazy** (default), **Hype** and **Clean**. Every Auto Edit is one undo step (Ctrl+Z).
+
+**Pro** follows a strict set of creator editing rules:
+- **Zero dead space.** Every pause 11 dB under your speaking level is cut, measured in 20 ms steps. 60 ms of each word's fade is kept, and every join is checked for leftover silence.
+- **Captions for reading.** 2–3 words at a time, never ending on a weak word (a, the, to, my, and…). TikTok Sans in pure white with a soft 20% shadow, one line, no outline or animation.
+- **Money in full.** "$11.5k" becomes "$11,500".
+- **Nothing flashy.** No transitions, effects or sound effects. Punch-ins (1.25×) only on the moments that matter.
+- **Safe zones.** Text in Shorts stays out of the top 15% and bottom 20% that the app's buttons cover.
+
+**Retention:**
+- **Punch-in zooms.** No shot stays static longer than 15 s in the first 3 minutes, or 30 s after that.
+- **Teaser.** An optional cold open plays the best moment first.
+
+Code: `electron/rocket/` (analysis, captions, effects, SFX, Auto Edit, Shorts, Claude) and `src/components/Rocket.jsx`.
+Test without Electron: `npm run test:rocket`.
 
 ## Features
 
@@ -382,9 +421,13 @@ Desktop and Start menu shortcuts. It is not code-signed, so SmartScreen may ask 
 ### Tests
 ```bash
 npm run test:export
+npm run test:rocket   # Auto Edit end to end: cut, export, Short, thumbnail, YouTube pack
+npm run test:store    # project store: undo/redo, transitions, Effects and Captions tracks
 ```
 Other suites: `test:captions`, `test:magnet`, `test:toolbar`, `test:clipmenu`, `test:layers`, `test:fx`,
 `test:library`, `test:stock`, `test:favorites`, `test:tts`, `test:ai`, `test:agent`.
+
+The whole Auto Edit flow in the real app (dialogs answered automatically): `FVE_SMOKE=<folder with video.mp4 [captions.srt]> FVE_SMOKE_MODE=rocket npx electron .`
 
 UI tests drive the real app with `FVE_SMOKE=<folder> FVE_SMOKE_MODE=<mode> npx electron .` (see `electron/smoke.cjs`)
 and never touch your real settings. The screenshots and animations in this README come from the `readme` mode
